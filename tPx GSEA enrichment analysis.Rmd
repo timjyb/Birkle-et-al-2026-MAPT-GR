@@ -1,0 +1,303 @@
+---
+title: "EnrichR"
+output: html_document
+date: "2026-05-11"
+---
+```{r}
+library(stringr)
+library(dplyr)
+# library(enrichR)
+library(ggplot2)
+library(clusterProfiler)
+library(org.Mm.eg.db)
+library(enrichplot)
+library(viridis)
+```
+
+```{r}
+#set seed
+set.seed(42)
+```
+
+Specify files and folders to use and set up save paths
+```{r}
+save_folder <- "./tPx GSEA Output - Combined Score Ranking/"
+dir.create(save_folder, showWarnings = FALSE)
+
+file_name <- "./tPx Final Outputs/H1.0 vs MAPTKI exclusions-FALSE NAThreshold-0.4 genes mapped.csv"
+
+save_name <- gsub(" exclusions-FALSE NAThreshold-0.4 genes mapped.csv", "", file_name)
+save_name <- gsub("./tPx Final Outputs/", "", save_name)
+genotype <- gsub("H1.0 vs ", "", save_name)
+genotype <- gsub("_", "+", genotype)
+
+# save_enrichr_tables <- FALSE
+# # save_enrichR_plots <- FALSE
+# 
+# save_enrichGO_tables <- TRUE
+# save_enrichGO_full_tables <- TRUE
+# save_enrichGO_cnets <- TRUE
+
+save_gseGO_tables <- FALSE
+save_gseGO_simple_tables <- FALSE
+save_gseGO_GSEA_plots <- FALSE
+save_gseGO_cnets <- FALSE
+save_gseGO_dotplots <- TRUE
+
+```
+
+Set up data to run functional enrichment on
+```{r}
+
+limma_data <- read.csv(file_name)
+```
+
+
+Creating pi-value (combined LFC and pvalue) for ranking for GSEA
+```{r}
+gene_list_processing <- limma_data %>% dplyr::select(Protein.Group, Genes, logFC, P.Value)
+gene_list_processing$Combined.Score <- gene_list_processing$logFC * -log10(gene_list_processing$P.Value)
+
+# Recode tau as Mapt so that it is included properly in the GSEA analysis
+gene_list_processing$Genes[gene_list_processing$Protein.Group == "P10637"] <- "Mapt"
+# Remove rows with missing gene names
+gene_list_processing <- gene_list_processing %>% filter(Genes != "")
+# A couple of gene names are duplicated for some reason - excluding these
+gene_table <- table(gene_list_processing$Genes)
+duplicated_excluded <- names(gene_table[gene_table > 1])
+gene_list_processing <- gene_list_processing %>% dplyr::filter(!(Genes %in% duplicated_excluded))
+
+# Make an ordered gene list in the correct format
+gene_list <- gene_list_processing$Combined.Score
+names(gene_list) <- as.character(gene_list_processing$Genes)
+gene_list <- sort(gene_list, decreasing = TRUE)
+
+```
+
+Clusterprofiler - GSEA
+```{r}
+# Need to create a ranked list of all genes. Choosing to try ranking these according to the largest absolute dIF (change in isoform fraction between genotypes) across all transcripts for each gene
+
+# isoswitch_data$abs.dIF <- abs(isoswitch_data$dIF)
+# isoswitch_data <- isoswitch_data %>% arrange(desc(abs.dIF))
+# isoswitch_data_unique_ranked_by_dIF <- isoswitch_data %>% distinct(gene_name, .keep_all = TRUE)
+# gene_list <- isoswitch_data_unique_ranked_by_dIF$abs.dIF
+# names(gene_list) <- as.character(isoswitch_data_unique_ranked_by_dIF$gene_name)
+# gene_list <- sort(gene_list, decreasing = TRUE)
+
+#set parameters
+min_set_gseGO <- 10
+max_set_gseGO <- 200
+pvalue_cutoff_gseGO <- 0.2
+
+
+#perform GSEA
+set.seed(42)
+
+gse_bp <- gseGO(gene_list,
+  ont = "BP",
+  OrgDb = org.Mm.eg.db,
+  keyType       = "SYMBOL",     # Capitalised mouse symbols (e.g., Trp53)
+  minGSSize     = min_set_gseGO,           # Native filter min
+  maxGSSize     = max_set_gseGO,            # Native filter max
+  # scoreType     = "pos",
+  pvalueCutoff  = pvalue_cutoff_gseGO,
+  seed = TRUE
+)
+
+gse_cc <- gseGO(gene_list,
+  ont = "CC",
+  OrgDb = org.Mm.eg.db,
+  keyType       = "SYMBOL",     # Capitalised mouse symbols (e.g., Trp53)
+  minGSSize     = min_set_gseGO,           # Native filter min
+  maxGSSize     = max_set_gseGO,            # Native filter max
+  # scoreType     = "pos",
+  pvalueCutoff  = pvalue_cutoff_gseGO,
+  seed = TRUE
+)
+
+gse_mf <- gseGO(gene_list,
+  ont = "MF",
+  OrgDb = org.Mm.eg.db,
+  keyType       = "SYMBOL",     # Capitalised mouse symbols (e.g., Trp53)
+  minGSSize     = min_set_gseGO,           # Native filter min
+  maxGSSize     = max_set_gseGO,            # Native filter max
+  # scoreType     = "pos",
+  pvalueCutoff  = pvalue_cutoff_gseGO,
+  seed = TRUE
+)
+
+gse_bp_simple <- simplify(gse_bp)
+gse_cc_simple <- simplify(gse_cc)
+gse_mf_simple <- simplify(gse_mf)
+
+
+save_path <- paste0(save_folder, save_name, "_gseGO_min", min_set_gseGO, "_max", max_set_gseGO, "_pvalcutoff", pvalue_cutoff_gseGO)
+ 
+if(save_gseGO_tables){
+  write.csv(gse_bp@result, paste0(save_path, "_GOBP.csv"))
+  write.csv(gse_cc@result, paste0(save_path, "_GOCC.csv"))
+  write.csv(gse_mf@result, paste0(save_path, "_GOMF.csv"))
+}
+
+if(save_gseGO_simple_tables){
+  write.csv(gse_bp_simple@result, paste0(save_path, "_GOBP_simple.csv"))
+  write.csv(gse_cc_simple@result, paste0(save_path, "_GOCC_simple.csv"))
+  write.csv(gse_mf_simple@result, paste0(save_path, "_GOMF_simple.csv"))
+}
+
+gse_bp_simple@result
+gse_cc_simple@result
+gse_mf_simple@result
+```
+
+GSEA enrichment plots
+```{r, fig.width=10,fig.height=6.5}
+if(nrow(gse_bp_simple@result)>0){
+  enrichplot::gseaplot2(gse_bp_simple, geneSetID = c(1:min(c(6, nrow(gse_bp_simple@result)))))
+}
+if(nrow(gse_cc_simple@result)>0){
+  enrichplot::gseaplot2(gse_cc_simple, geneSetID = c(1:min(c(6, nrow(gse_cc_simple@result)))))
+}
+if(nrow(gse_mf_simple@result)>0){
+  enrichplot::gseaplot2(gse_mf_simple, geneSetID = c(1:min(c(6, nrow(gse_mf_simple@result)))))
+}
+
+save_path <- paste0(save_folder, save_name, "_gseGO_min", min_set_gseGO, "_max", max_set_gseGO, "_pvalcutoff", pvalue_cutoff_gseGO)
+
+if(save_gseGO_GSEA_plots){
+  if(nrow(gse_bp_simple@result)>0){
+    p <- enrichplot::gseaplot2(gse_bp_simple, geneSetID = c(1:min(c(6, nrow(gse_bp_simple@result)))))
+    ggsave(paste0(save_path, "_GOBP_GSEA.png"), plot = p, bg = "white")
+  }
+  if(nrow(gse_cc_simple@result)>0){
+    p <- enrichplot::gseaplot2(gse_cc_simple, geneSetID = c(1:min(c(6, nrow(gse_cc_simple@result)))))
+    ggsave(paste0(save_path, "_GOCC_GSEA.png"), plot = p, bg = "white")
+  }
+  if(nrow(gse_mf_simple@result)>0){
+    p <- enrichplot::gseaplot2(gse_mf_simple, geneSetID = c(1:min(c(6, nrow(gse_mf_simple@result)))))
+    ggsave(paste0(save_path, "_GOMF_GSEA.png"), plot = p, bg = "white")
+  }
+}
+
+```
+
+
+gseGO Cnet plotting? NB uses parameters from the chunk above
+```{r, fig.width=10,fig.height=6.5}
+# good layouts: dh, graphopt, fr
+if(nrow(gse_bp_simple@result)>0){
+  cnetplot(gse_bp_simple, showCategory = min(c(7, nrow(gse_bp_simple@result))), layout = "fr", size_edge = 1.3, size_item = 1.3) +
+    labs(title = "gseGO - Biological Process", subtitle = paste0("Adjusted p < ", pvalue_cutoff_gseGO)) +
+    theme(plot.title = element_text(hjust = 0.02), plot.subtitle = element_text(hjust = 0.02))
+}
+
+if(nrow(gse_cc_simple@result)>0){
+  cnetplot(gse_cc_simple, showCategory = min(c(7, nrow(gse_cc_simple@result))), layout = "fr", size_edge = 1.3, size_item = 1.3) +
+    labs(title = "gseGO - Cellular Component", subtitle = paste0("Adjusted p < ", pvalue_cutoff_gseGO)) +
+    theme(plot.title = element_text(hjust = 0.02), plot.subtitle = element_text(hjust = 0.02))
+}
+ 
+if(nrow(gse_mf_simple@result)>0){
+  cnetplot(gse_mf_simple, showCategory = min(c(7, nrow(gse_mf_simple@result))), layout = "fr", size_edge = 1.3, size_item = 1.3) +
+    labs(title = "gseGO - Molecular Function", subtitle = paste0("Adjusted p < ", pvalue_cutoff_gseGO)) +
+    theme(plot.title = element_text(hjust = 0.02), plot.subtitle = element_text(hjust = 0.02))
+}
+
+#Saving cnet plots
+save_path <- paste0(save_folder, save_name, "_gseGO_min", min_set_gseGO, "_max", max_set_gseGO, "_pvalcutoff", pvalue_cutoff_gseGO)
+
+if(save_gseGO_cnets){
+  if(nrow(gse_bp_simple@result)>0){
+    cnetplot(gse_bp_simple, showCategory = min(c(7, nrow(gse_bp_simple@result))), layout = "fr", size_edge = 1.3, size_item = 1.3) +
+      labs(title = "gseGO - Biological Process", subtitle = paste0("Adjusted p < ", pvalue_cutoff_gseGO)) +
+      theme(plot.title = element_text(hjust = 0.02), plot.subtitle = element_text(hjust = 0.02))
+    ggsave(paste0(save_path, "_GOBP_cnet.png"), bg = "white")
+  }
+  if(nrow(gse_cc_simple@result)>0){
+    cnetplot(gse_cc_simple, showCategory = min(c(7, nrow(gse_cc_simple@result))), layout = "fr", size_edge = 1.3, size_item = 1.3) +
+      labs(title = "gseGO - Cellular Component", subtitle = paste0("Adjusted p < ", pvalue_cutoff_gseGO)) +
+      theme(plot.title = element_text(hjust = 0.02), plot.subtitle = element_text(hjust = 0.02))
+    ggsave(paste0(save_path, "_GOCC_cnet.png"), bg = "white")
+  }
+  if(nrow(gse_mf_simple@result)>0){
+    cnetplot(gse_mf_simple, showCategory = min(c(7, nrow(gse_mf_simple@result))), layout = "fr", size_edge = 1.3, size_item = 1.3) +
+      labs(title = "gseGO - Molecular Function", subtitle = paste0("Adjusted p < ", pvalue_cutoff_gseGO)) +
+      theme(plot.title = element_text(hjust = 0.02), plot.subtitle = element_text(hjust = 0.02))
+    ggsave(paste0(save_path, "_GOMF_cnet.png"), bg = "white")
+  }
+}
+
+```
+
+```{r}
+tims_dotplot <- function(gseaResult,
+                               showCategory = 20,
+                               title = "",
+                               color = "p.adjust",
+                               font_size = 12,
+                               x_label = "Gene Ratio",
+                               low_color = "red",
+                               high_color = "blue") {
+
+  p <- dotplot(gseaResult,
+               showCategory = showCategory,
+               color = color,
+               font.size = font_size) +
+    ggtitle(title) +
+    xlab(x_label) +
+    scale_color_gradient(low = low_color, high = high_color) +
+    # scale_fill_gradientn(name = "Adj. P-value", colours = c(low_color, high_color), limits = c(0, 0.21)) +
+    scale_fill_viridis(name = "Adj. P-value", limits = c(0, 0.21), direction = -1, option = "D") +
+    theme(
+      plot.title = element_text(face = "bold", size = font_size + 4, hjust = 0),
+      axis.title.x = element_text(face = "bold", size = font_size),
+      axis.text.y = element_text(size = font_size),
+      axis.text.x = element_text(size = font_size),
+      legend.title = element_text(size = font_size),
+      legend.text = element_text(size = font_size - 1),
+    )
+
+  return(p)
+}
+```
+
+
+```{r, fig.width=5,fig.height=8}
+if(nrow(gse_bp_simple@result)>0){
+  dotplot_BP <- tims_dotplot(gse_bp_simple, title = paste0(genotype, " - GO BP"))
+  dotplot_BP
+}
+if(nrow(gse_cc_simple@result)>0){
+  dotplot_CC <- tims_dotplot(gse_cc_simple, title = paste0("GO-CC"))
+  dotplot_CC
+}
+if(nrow(gse_mf_simple@result)>0){
+  dotplot_MF <- tims_dotplot(gse_mf_simple, title = paste0(genotype, " - GO MF"))
+  dotplot_MF
+}
+
+if(save_gseGO_dotplots){
+  plot_width = 5
+  plot_height = 8
+  save_path <- paste0(save_folder, save_name, "_gseGO_min", min_set_gseGO, "_max", max_set_gseGO, "_pvalcutoff", pvalue_cutoff_gseGO)
+
+  if(nrow(gse_bp_simple@result)>0){
+    ggsave(paste0(save_path, "_GOBP_dotplot.png"), plot = dotplot_BP, width = plot_width, height = plot_height)
+  }
+  if(nrow(gse_cc_simple@result)>0){
+    ggsave(paste0(save_path, "_GOCC_dotplot.png"), plot = dotplot_CC, width = plot_width, height = plot_height)
+  }
+  if(nrow(gse_mf_simple@result)>0){
+    ggsave(paste0(save_path, "_GOMF_dotplot.png"), plot = dotplot_MF, width = plot_width, height = plot_height)
+  }
+}
+
+```
+
+
+
+
+
+
+
