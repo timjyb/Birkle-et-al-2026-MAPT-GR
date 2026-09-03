@@ -1,0 +1,157 @@
+---
+title: "MAPT pSite eigenprotein scores"
+output: html_document
+date: "2026-06-26"
+---
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(FactoMineR)
+library(factoextra)
+library(ggrepel)
+```
+
+PARAMETERS
+```{r}
+plot_colours <- c("cyan4", "indianred", "brown")
+
+save_option <- TRUE
+
+```
+
+Load imputed data
+```{r}
+three_genotype_imputed <- read.csv("./pPx Intermediate Outputs/three_genotype_imputed exclusions-TRUE NAThreshold-0.4 NonImputedKept-FALSE.csv")
+rownames(three_genotype_imputed) <- three_genotype_imputed$X
+three_genotype_imputed <- three_genotype_imputed[,colnames(three_genotype_imputed)!="X"]
+
+MAPT_pSite_data <- three_genotype_imputed[grep("P10636", rownames(three_genotype_imputed)),]
+```
+
+Load mapper
+```{r}
+mapper <- read.csv("pPx mapper.csv")
+
+colnames(mapper)[which(names(mapper) == "Raw")] <- "DRI_ID"
+
+print("SAMPLE INFORMATION AND IDS")
+print(mapper)
+```
+
+To test including PCA in the limma model, first run PCA
+```{r}
+pca_input <- MAPT_pSite_data[complete.cases(MAPT_pSite_data),]
+complete_data_scaled <- as.data.frame(scale(t(pca_input)))
+pca_output <- prcomp(x = complete_data_scaled)
+ind <- get_pca_ind(pca_output)
+pca_data <- as.data.frame(ind$coord)
+#pca_data
+
+explained_variances <- as.data.frame(summary(pca_output)$importance)[2,]*100
+
+pca_data$DRI_ID <- rownames(pca_data)
+mapper$DRI_ID <- as.character(mapper$DRI_ID)
+pca_data <- left_join(pca_data, mapper[,colnames(mapper) %in% c("DRI_ID", "Genotype")], by = "DRI_ID")
+```
+
+Plot the PCA plots
+```{r}
+#Ensure correct IVS10+16 labelling
+pca_data$Genotype <- gsub("IVS10_16", "IVS10+16", pca_data$Genotype)
+
+pca_colours <- c("cyan4", "indianred", "darkred")
+
+# Plot neat PCA plots with focus on Genotype comparison and clustering
+for(base_pc in c(1)){
+  second_pc <- base_pc + 1
+
+  p <- ggplot(pca_data, aes(x=pca_data[,base_pc], y=pca_data[,second_pc], color=Genotype, label = DRI_ID)) +
+    geom_point(size = 3) +
+    stat_ellipse(data = pca_data, aes(x=pca_data[,base_pc], y=pca_data[,second_pc], color=Genotype, fill=Genotype), inherit.aes = FALSE, geom = "polygon", alpha=0.05, linewidth = 0.6) +
+    xlab(paste0("PC", base_pc, ": ", explained_variances[1,base_pc], "% variance")) + 
+    ylab(paste0("PC", second_pc, ": ", explained_variances[1,second_pc], "% variance")) + 
+    # coord_fixed(ratio = 1) +
+    ggtitle("MAPT Phospho-sites' PCA") +
+    # geom_text_repel(colour = "black", size = 2) +
+    scale_color_manual(values = pca_colours) +
+    scale_fill_manual(values = pca_colours) +
+    theme(axis.title.x = element_text(size = 18, margin=margin(8,0,0,0)),
+          axis.title.y = element_text(size = 18, margin=margin(0,8,0,0)),
+          axis.text = element_text(size = 15, colour = "black"),
+          legend.text = element_text(size = 12),
+          legend.title = element_text(size = 12), 
+          plot.title = element_text(size=20))
+  print(p)
+  if (save_option){
+    ggsave(paste0("./pPx pMAPT Plots/pMAPT PC", base_pc, " vs ", second_pc, ".png"))
+  }
+}
+```
+
+PCA loadings
+```{r}
+var <- get_pca_var(pca_output)
+loadings <- data.frame(var$coord)
+loadings$feature <- c("pT175", "pT181", "pS202", "pT217", "pT231", "pS235")
+loadings$vjust <- c(-0.5, -0.5, 1.2, 1.2, -0.5, 1.2)
+
+p <- ggplot(loadings, aes(x = 0, y = 0, xend = Dim.1, yend = Dim.2)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
+  geom_segment(arrow = arrow(length = unit(0.2, "cm")), color = "steelblue", linewidth = 1) +
+  geom_text(aes(x = Dim.1, y = Dim.2, label = feature, vjust = vjust), hjust = 0.5, size = 4) +
+  xlim(c(-0.25, 1.25)) +
+  ylim(c(-1, 0.6)) +
+  coord_equal() +
+  theme_minimal() +
+  labs(x = "PC1 loading", y = "PC2 loading",
+       title = "PCA Loadings") +
+  theme(axis.title.x = element_text(size = 18, margin=margin(8,0,0,0)),
+        axis.title.y = element_text(size = 18, margin=margin(0,8,0,0)),
+        axis.text = element_text(size = 15, colour = "black"),
+        legend.text = element_text(size = 12),
+        legend.title = element_text(size = 12), 
+        plot.title = element_text(size=20))
+p
+
+if (save_option){
+    ggsave("./pPx pMAPT Plots/pMAPT PCA Loadings PC1 vs PC2.png")
+}
+```
+
+Compiled phosphorylation plotting (doesn't use the PCA)
+```{r, fig.width=10,fig.height=6.5}
+#select pMAPT sites - if keeping all, all are equally weighted in the combined score and this means that noisy pSites that did not change between genotypes introduce lots of noise into the comparison. Mathieu has previously done this by only summing Zscores for significantly hyperphosphorylated sites. Here, just doing manually
+chosen_pSites <- c("P10636_S_519", "P10636_T_534", "P10636_S_552")
+chosen_pSites_names <- c("pS202", "pT217", "pS235")
+
+phos_scores <- as.data.frame(rowSums(complete_data_scaled[,chosen_pSites]))
+
+colnames(phos_scores) <- "Combined.MAPT.pSite.Zscores"
+phos_scores$DRI_ID <- rownames(phos_scores)
+phos_scores <- left_join(phos_scores, mapper[,colnames(mapper) %in% c("DRI_ID", "Genotype")], by = "DRI_ID")
+
+GenotypeStats <- phos_scores %>% group_by(Genotype) %>%
+  summarise(
+    count = n(),
+    mean_val = mean(Combined.MAPT.pSite.Zscores, na.rm = TRUE),
+    sd_val = sd(Combined.MAPT.pSite.Zscores, na.rm = TRUE)
+  )
+
+p <- ggplot(data = GenotypeStats, aes(x=Genotype, y=mean_val, fill = Genotype)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  geom_errorbar(aes(ymin = mean_val - sd_val, ymax = mean_val + sd_val), linewidth = 0.5, width = 0.2, position = position_dodge(width=0.9)) +
+  scale_fill_manual(values=plot_colours) + 
+  theme_classic() +
+  labs(title = "Summed Z-scores for changing MAPT pSites:", subtitle = paste0(chosen_pSites_names, collapse = ", ")) +
+  ylab("Combined MAPT pSites' Z-scores") +
+  guides(fill = "none")
+p
+
+if(save_option){
+  ggsave(paste0("./pPx pMAPT Plots/Combined pMAPT Zscores ", paste0(chosen_pSites_names, collapse = "-"), ".png"))
+}
+```
+
+

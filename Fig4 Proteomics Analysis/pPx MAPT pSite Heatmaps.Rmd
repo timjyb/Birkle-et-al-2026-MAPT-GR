@@ -1,0 +1,171 @@
+---
+title: "pTau heatmaps"
+output: html_document
+date: "2026-05-11"
+---
+```{r}
+library(dplyr)
+library(ggplot2)
+library(pheatmap)
+library(reshape2)
+```
+
+```{r}
+heatmap_folder <- "./pPx pMAPT heatmaps/"
+```
+
+Bring data in and fix column names
+```{r}
+#load combined, imputed pPX data
+data <- read.csv("./pPx Intermediate Outputs/three_genotype_imputed exclusions-TRUE NAThreshold-0.4 NonImputedKept-FALSE.csv")
+colnames(data)[1] <- "pSiteID"
+
+#filter for only MAPT pSites
+data <- data[grep("P10636", data$pSiteID),]
+
+#exclude those with missing data
+data <- data[complete.cases(data),]
+
+#exclude those with negative values introduced by the imputation (these won't have been passed to limma in the main analysis)
+data <- data[rowSums(data<0, na.rm = TRUE)==0,]
+
+#load the mapper file to associated genotypes to samples
+mapper <- read.csv("pPx mapper.csv")
+colnames(mapper)[which(names(mapper) == "Raw")] <- "DRI_ID"
+
+#using one of the data processing limma outputs with genes and pTau sites added as a mapper - this works because we are only working with complete data, so all pSites being plotted here will also have been kept in the H1 vs IV10+16 comparison (and all others too)
+gene_mapper <- read.csv("./pPx Final Outputs/H1.0 vs N279K exclusions-TRUE NAThreshold-0.4 Dim.1 out genes mapped.csv")
+gene_mapper <- gene_mapper[,2:9]
+
+#using mapper, add genotype information to the MAPT pSites data
+data <- left_join(data, gene_mapper, by = "pSiteID")
+```
+
+Scale and rearrange data ready for heatmapping
+```{r}
+data_scaled <- data.matrix(data[,grep("DRI_X178", colnames(data))])
+rownames(data_scaled) <- data$Tau441.pSite
+
+#log2 transform - v2 no longer needed as the data is already log transformed!
+#data_scaled_log <- log2(data_scaled)
+
+#Scaling data for each pSite to be comparable
+data_scaled <- t(data_scaled)
+data_scaled <- scale(data_scaled)
+
+#Amending column titles
+colnames(data_scaled) <- c("pT175", "pT181", "pS202", "pT217", "pT231", "pS235")
+
+# data_scaled_log <- t(data_scaled_log)
+# data_scaled_log <- scale(data_scaled_log)
+```
+
+Heatmapping prep
+```{r}
+library(viridis)
+library(grid)
+
+save_pheatmap_png <- function(x, filename, width=1000, height=600, res = 150) {
+  png(filename, width = width, height = height, res = res)
+  grid::grid.newpage()
+  grid::grid.draw(x$gtable)
+  dev.off()
+}
+```
+
+```{r}
+
+plot_colours <- list(Genotype = c(H1.0 = "cyan4", 'IVS10+16' = "indianred", N279K = "brown"))
+
+genotype_labels <- as.data.frame(mapper[match(rownames(data_scaled), as.character(mapper$DRI_ID)),"Genotype"])
+colnames(genotype_labels) <- "Genotype"
+rownames(genotype_labels) <- rownames(data_scaled)
+n_H1 <- table(genotype_labels$Genotype)["H1.0"]
+n_IVS <- table(genotype_labels$Genotype)["IVS10_16"]
+
+genotype_labels$Genotype[genotype_labels$Genotype=="IVS10_16"] <- "IVS10+16"
+genotype_labels$Genotype <- factor(genotype_labels$Genotype)
+
+
+#Without row-wise clustering (samples already in genotype order)
+x <- pheatmap(data_scaled, 
+         annotation_row = genotype_labels, 
+         annotation_colors = plot_colours, 
+         cluster_rows = FALSE,
+         treeheight_col = 10,
+         color = viridis(100), 
+         gaps_row = c(n_H1, n_H1 + n_IVS), 
+         angle_col = 0,
+         annotation_names_row = FALSE,
+         show_rownames = FALSE,
+         main = "MAPT Phospho-sites")
+save_pheatmap_png(x, paste0(heatmap_folder, "pMAPT cluster_rows FALSE show_rownames FALSE.png"))
+
+#Without row-wise clustering (samples already in genotype order) - EXCLUDING OUTLIERS
+x <- pheatmap(data_scaled[-c(17,18),], 
+         annotation_row = genotype_labels, 
+         annotation_colors = plot_colours, 
+         cluster_rows = FALSE,
+         treeheight_col = 10,
+         color = viridis(100), 
+         gaps_row = c(n_H1, n_H1 + n_IVS), 
+         angle_col = 0,
+         annotation_names_row = FALSE,
+         show_rownames = FALSE,
+         main = "MAPT Phospho-sites")
+save_pheatmap_png(x, paste0(heatmap_folder, "pMAPT cluster_rows FALSE show_rownames FALSE excluding outliers.png"))
+
+```
+
+Heatmap with no title
+```{r}
+x <- pheatmap(data_scaled, 
+         annotation_row = genotype_labels, 
+         annotation_colors = plot_colours, 
+         cluster_rows = FALSE,
+         treeheight_col = 10,
+         color = viridis(100), 
+         gaps_row = c(n_H1, n_H1 + n_IVS), 
+         angle_col = 0,
+         annotation_names_row = FALSE,
+         show_rownames = FALSE)
+save_pheatmap_png(x, paste0(heatmap_folder, "pMAPT cluster_rows FALSE show_rownames FALSE NoTitle.png"))
+
+```
+
+```{r}
+library(grid)
+library(gridExtra)
+
+# 1. Save the heatmap as a grid object (grob) instead of plotting it
+# Note: silent = TRUE prevents it from opening a blank window early
+ph <- pheatmap(data_scaled, 
+         annotation_row = genotype_labels, 
+         annotation_colors = plot_colours, 
+         cluster_rows = FALSE,
+         treeheight_col = 10,
+         color = viridis(100), 
+         gaps_row = c(n_H1, n_H1 + n_IVS), 
+         angle_col = 0,
+         annotation_names_row = FALSE,
+         show_rownames = FALSE, silent = TRUE)
+
+title_x_position <- 0.43
+
+# 2. Create your title grob
+title_grob <- textGrob("MAPT Phospho-site",
+                       x = unit(title_x_position, "npc"),
+                        hjust = 0.5, 
+                        gp = gpar(fontsize = 12))
+
+# 3. Arrange them together (Heatmap on top, Title on bottom)
+# heights = c(10, 1) reserves roughly 10% of the total canvas space for the title
+grid.arrange(ph$gtable, bottom = title_grob, heights = c(10, 0))
+
+#Saving
+png(paste0(heatmap_folder, "pMAPT cluster_rows FALSE show_rownames FALSE BottomTitle.png"), width = 800, height = 400, res = 120) # dimensions in pixels
+grid.arrange(ph$gtable, bottom = title_grob, heights = c(10, 0))
+dev.off() # Closes and saves the file
+```
+
+
