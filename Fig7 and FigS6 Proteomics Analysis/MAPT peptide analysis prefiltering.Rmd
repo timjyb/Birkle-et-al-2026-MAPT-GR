@@ -1,0 +1,14 @@
+---
+title: "Initial filter for all MAPT peptides"
+output: html_document
+date: "2026-05-08"
+---
+
+```{r}
+peptides <- read.csv("DRIX168_31032026search_Peptide_level.csv")
+#Filter for MAPT peptides and only necessary columns
+MAPTpeptides <- peptides %>% filter(Protein.Names == "TAU_HUMAN;cRAP-TAU_HUMAN") %>% select(Run, Stripped.Sequence, Precursor.Quantity)
+
+write.csv(MAPTpeptides, file = "All_MAPT_Peptides.csv")
+```
+

@@ -1,0 +1,353 @@
+---
+title: "260507 MAPT Peptide Level"
+output: html_document
+date: "2026-05-07"
+---
+```{r}
+library(dplyr)
+library(reshape2)
+library(ggplot2)
+library(RColorBrewer)
+```
+
+Colours for plotting
+```{r}
+plot_colours <- c("cyan4", "indianred", "brown")
+```
+
+Optional ggsave function
+```{r}
+save_option <- TRUE
+
+ggsave_optional <- function(filename) {
+  peptide_analysis_plot_folder <- "./tPx MAPT Peptide Plots/"
+  if(save_option){
+    ggsave(paste0(peptide_analysis_plot_folder, filename))
+  } else {
+    print("Plot not saved")
+  }
+}
+```
+
+Load pre-filtered MAPT peptide dataset
+```{r}
+MAPTpeptides <- read.csv("All_MAPT_Peptides.csv")
+MAPTpeptides <- MAPTpeptides[,2:4]
+```
+
+Bring in metadata and tau441 peptide sequence
+```{r}
+mapper <- read.csv("totalproteome_mapper.csv")
+Tau441 <- toupper(as.character(read.delim("Tau441 Amino Acid Sequence.txt", header = FALSE)))
+
+```
+
+Prepare data
+```{r} 
+#reshape to wide format
+MAPTpeptidesWide <- suppressWarnings(reshape(MAPTpeptides, idvar = "Stripped.Sequence", timevar = "Run", direction = "wide"))
+#replace column names with Simple IDs
+colnames(MAPTpeptidesWide)[2:21] <- sapply(strsplit(colnames(MAPTpeptidesWide[2:21]),"_"), `[`, 6)
+
+#make column with peptide start position
+MAPTpeptidesWide$PeptideStart <- sapply(
+  MAPTpeptidesWide$Stripped.Sequence,
+  function(x) regexpr(x, Tau441, fixed = TRUE)[1]
+)
+
+#make column with peptide end position (position of the final amino acid of the peptide), and then sort the data by peptide position 
+MAPTpeptidesWide <- MAPTpeptidesWide %>% mutate(PeptideEnd = PeptideStart + nchar(Stripped.Sequence) - 1) %>% relocate(PeptideStart, .after = Stripped.Sequence) %>% relocate(PeptideEnd, .after = PeptideStart) %>% arrange(PeptideStart, PeptideEnd)
+```
+
+```{r}
+#Count NAs per peptide
+NACountByRow <- rowSums(is.na(MAPTpeptidesWide))
+table(NACountByRow)
+
+#Filter by number of allowed NAs (out of 20 samples)
+MaxNAs <- 6
+MAPTpeptidesWide <- MAPTpeptidesWide[NACountByRow<=MaxNAs,]
+```
+
+```{r}
+#filter out unidentified peptides (exon junctions not in tau441 probably? - Actually can't seem to find at all. not sure what these are? Possible in some non-neuronal tau exon than isn't present in tau441 at all, e.g. ex4a)
+MAPTpeptidesWide <- MAPTpeptidesWide %>% filter(PeptideStart>0)
+
+#remove ex9-ex10 peptide that includes N279K mutation site
+MAPTpeptidesWide <- MAPTpeptidesWide %>% filter(Stripped.Sequence!="HQPGGGKVQIINK")
+
+#Add in a PeptideRank column to help with plotting later
+MAPTpeptidesWide$PeptideRank <- rank(MAPTpeptidesWide$PeptideStart, ties.method = "first")
+MAPTpeptidesWide <- MAPTpeptidesWide %>% relocate(PeptideRank, .after = Stripped.Sequence)
+```
+
+Make a new column for Exon 10 status
+```{r}
+MAPTpeptidesWide$InExon10 <- 
+  (MAPTpeptidesWide$PeptideStart<=305 & MAPTpeptidesWide$PeptideStart>=275)|
+  (MAPTpeptidesWide$PeptideEnd<=305 & MAPTpeptidesWide$PeptideEnd>=275)
+MAPTpeptidesWide <- MAPTpeptidesWide %>% relocate(InExon10, .after = PeptideEnd)
+```
+
+
+Normalisation
+```{r}
+#normalise within each sample - NOW ONLY USING PEPTIDES FOR CONSTITUTIVE EXONS
+SampleMeans <- colMeans(MAPTpeptidesWide[!MAPTpeptidesWide$InExon10,6:25], na.rm = TRUE)
+SampleSds <- apply(MAPTpeptidesWide[!MAPTpeptidesWide$InExon10,6:25], 2, sd, na.rm = TRUE)
+
+MAPTpeptidesWide[,6:25] <- scale(MAPTpeptidesWide[,6:25], center = SampleMeans, scale = SampleSds)
+
+#initial col means and sds (excluding E10 peptides)
+print("======== Old Sample Means ========")
+print(SampleMeans[1:5])
+print("======== Old Sample SDs ========")
+print(SampleSds[1:5])
+
+#new col means and sds (excluding E10 peptides)
+print("======== New Sample Means ========")
+print(round(colMeans(MAPTpeptidesWide[!MAPTpeptidesWide$InExon10,6:25], na.rm = TRUE), digits = 3)[1:5])
+print("======== New Sample SDs ========")
+print(round(apply(MAPTpeptidesWide[!MAPTpeptidesWide$InExon10,6:25], 2, sd, na.rm = TRUE), digits = 3)[1:5])
+
+```
+Peptide-wise normalisation
+```{r}
+PeptideWiseScaled <- MAPTpeptidesWide
+PeptideWiseScaled[,6:25] <- t(scale(t(PeptideWiseScaled[,6:25])))
+```
+
+Melt to long format for plotting
+```{r}
+MAPTpeptidesMelt <- melt(MAPTpeptidesWide, idvars = "Stripped.Sequence", measure.vars = as.character(c(1:20)))
+names(MAPTpeptidesMelt)[names(MAPTpeptidesMelt) == "variable"] <- "ID"
+head(MAPTpeptidesMelt)
+
+#Add Genotype column
+mapper$ID <- as.factor(mapper$ID)
+MAPTpeptidesMelt <- left_join(MAPTpeptidesMelt, mapper[,colnames(mapper) %in% c("ID", "Genotype")], by = "ID")
+
+```
+
+Summary stats by genotype
+```{r}
+GenotypeStats <- MAPTpeptidesMelt %>%
+  group_by(Genotype, Stripped.Sequence) %>%
+  summarise(
+    count = n(),
+    mean_val = mean(value, na.rm = TRUE),
+    sd_val = sd(value, na.rm = TRUE)
+  )
+
+GenotypeStats <- left_join(GenotypeStats, MAPTpeptidesWide[,1:5], by = "Stripped.Sequence")
+head(GenotypeStats)
+```
+Exon 10 data and peptide ranks/positions
+```{r}
+GenotypeStatsE10 <- GenotypeStats[GenotypeStats$InExon10,]
+E10MinRank <- min(GenotypeStatsE10$PeptideRank)
+E10MaxRank <- max(GenotypeStatsE10$PeptideRank)
+E10MinPos <- min(GenotypeStatsE10$PeptideStart)
+E10MaxPos <- max(GenotypeStatsE10$PeptideStart)
+
+```
+
+
+Plot by genotype
+```{r, fig.width=10,fig.height=6.5}
+p <- ggplot(data=GenotypeStats, aes(x=PeptideRank, y=mean_val, group = Genotype)) +
+  geom_rect(ymax = Inf, ymin = -Inf, xmin = E10MinRank-0.5, xmax = E10MaxRank+0.5, fill = alpha("darkgoldenrod1", 0.005)) +
+  geom_text(
+    label="Exon 10", 
+    x=mean(c(E10MinRank,E10MaxRank)),
+    y=4.8,
+    color = "#002000",
+    aes(fontface=2),
+    size = 5
+  ) +
+  geom_line(aes(color = Genotype), linewidth = 1.5, lineend = "round")+
+  geom_point(aes(color = Genotype)) +
+  geom_errorbar(aes(ymin = mean_val - sd_val, ymax = mean_val + sd_val, color = Genotype), linewidth = 1, width = 0.4) +
+  ggtitle("Peptides Ranked by Start Position") + 
+  scale_color_manual(values=plot_colours) + 
+  theme_classic() +
+  ylab("Peptide Abundance\n(standardised against the mean of constitutive peptides)") +
+  xlab("Peptide (ranked by start position)")
+  #facet_wrap to separate genotypes, remove to overlay as default
+  #facet_wrap(~Genotype, ncol=3)
+print(p)
+
+ggsave_optional("Unscaled all peptides lineplot by rank.png")
+
+q <- ggplot(data=GenotypeStats, aes(x=PeptideStart, y=mean_val, group = Genotype)) +
+  geom_rect(ymax = Inf, ymin = -Inf, xmin = E10MinPos-5, xmax = E10MaxPos+5, fill = alpha("darkgoldenrod1", 0.005)) +
+  geom_text(
+    label="Exon 10", 
+    x=mean(c(E10MinPos, E10MaxPos))-5,
+    y=4.8,
+    color = "#002000",
+    aes(fontface=2),
+    size = 5
+  ) +
+  geom_line(aes(color = Genotype), linewidth = 1.5, lineend = "round")+
+  geom_point(aes(color = Genotype)) +
+  geom_errorbar(aes(ymin = mean_val - sd_val, ymax = mean_val + sd_val, color = Genotype), linewidth = 1, width = 3) +
+  ggtitle("Peptides by Actual Start Position") + 
+  scale_color_manual(values=plot_colours) +
+  theme_classic() +
+  ylab("Peptide Abundance\n(standardised against the mean of constitutive peptides)") +
+  xlab("Peptide Start Position") 
+print(q)
+
+ggsave_optional("Unscaled all peptides lineplot by position.png")
+```
+
+Bar plot E10 only
+```{r}
+GenotypeStatsE10 <- GenotypeStatsE10 %>% mutate(Range = paste(PeptideStart, PeptideEnd, sep = "-"))
+
+p <- ggplot(data = GenotypeStatsE10, aes(x=Range, y=mean_val, fill = Genotype)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  geom_errorbar(aes(ymin = mean_val - sd_val, ymax = mean_val + sd_val), linewidth = 0.5, width = 0.2, position = position_dodge(width=0.9)) +
+  scale_fill_manual(values=c("cyan4", "indianred", "brown")) + 
+  theme_classic() +
+  ylab("Peptide Abundance\n(standardised against the mean of constitutive peptides)") +
+  xlab("MAPT Exon 10 Peptides (2N4R tau amino acid positions)")
+p
+
+ggsave_optional("Unscaled E10 only barplot.png")
+
+```
+
+Repeating plotting but with peptide-wise scaled data
+```{r, fig.width=10,fig.height=6.5}
+PeptideWiseMelt <- melt(PeptideWiseScaled, idvars = "Stripped.Sequence", measure.vars = as.character(c(1:20)))
+names(PeptideWiseMelt)[names(PeptideWiseMelt) == "variable"] <- "ID"
+head(PeptideWiseMelt)
+
+#Add Genotype column
+mapper$ID <- as.factor(mapper$ID)
+PeptideWiseMelt <- left_join(PeptideWiseMelt, mapper[,colnames(mapper) %in% c("ID", "Genotype")], by = "ID")
+
+#Genotype-wise stats
+PeptideWiseGenotypeStats <- PeptideWiseMelt %>%
+  group_by(Genotype, Stripped.Sequence) %>%
+  summarise(
+    count = n(),
+    mean_val = mean(value, na.rm = TRUE),
+    sd_val = sd(value, na.rm = TRUE)
+  )
+
+PeptideWiseGenotypeStats <- left_join(PeptideWiseGenotypeStats, PeptideWiseScaled[,1:5], by = "Stripped.Sequence")
+head(PeptideWiseGenotypeStats)
+
+#Amending IVS10+16 name for plotting
+PeptideWiseGenotypeStats$Genotype <- gsub("IVS10_16", "IVS10+16", PeptideWiseGenotypeStats$Genotype)
+
+```
+
+Plotting
+```{r}
+
+#plotting - NB relies on determination of E10 box boundaries in a previous chunk
+p <- ggplot(data=PeptideWiseGenotypeStats, aes(x=PeptideRank, y=mean_val, group = Genotype)) +
+  geom_rect(ymax = Inf, ymin = -Inf, xmin = E10MinRank-0.5, xmax = E10MaxRank+0.5, fill = alpha("darkgoldenrod1", 0.01)) +
+  geom_text(
+    label="Exon 10", 
+    x=mean(c(E10MinRank,E10MaxRank)),
+    y=2.6,
+    color = "#002000",
+    aes(fontface=2),
+    size = 4
+  ) +
+  geom_line(aes(color = Genotype), linewidth = 1.5, lineend = "round")+
+  geom_point(aes(color = Genotype)) +
+  geom_errorbar(aes(ymin = mean_val - sd_val, ymax = mean_val + sd_val, color = Genotype), linewidth = 1, width = 0.4) +
+  ggtitle("Peptides Ranked by Start Position") + 
+  scale_color_manual(values=plot_colours) + 
+  theme_classic() +
+  ylab("Peptide Abundance\n(standardised individually)") +
+  xlab("Peptide (ranked by start position)") +
+  ylim(NA,2.5) +
+  geom_hline(yintercept = 0, col = "black", linetype = 'dashed') +
+  #facet_wrap to separate genotypes, remove to overlay as default
+  facet_wrap(~Genotype, nrow=3)
+print(p)
+
+# ggsave_optional("Peptide-wise all peptides lineplot by rank facet_wrap.png")
+
+p <- ggplot(data=PeptideWiseGenotypeStats, aes(x=PeptideRank, y=mean_val, group = Genotype)) +
+  geom_rect(ymax = Inf, ymin = -Inf, xmin = E10MinRank-0.5, xmax = E10MaxRank+0.5, fill = alpha("darkgoldenrod1", 0.005)) +
+  geom_text(
+    label="Exon\n10", 
+    x=mean(c(E10MinRank,E10MaxRank)),
+    y=2.6,
+    color = "#002000",
+    aes(fontface=2),
+    size = 4
+  ) +
+  geom_line(aes(color = Genotype), linewidth = 3)+
+  geom_point(aes(color = Genotype)) +
+  geom_errorbar(aes(ymin = mean_val - sd_val, ymax = mean_val + sd_val, color = Genotype), linewidth = 0.5, width = 0.5) +
+  # ggtitle("Peptides Ranked by Start Position") + 
+  scale_color_manual(values=plot_colours) + 
+  theme_classic() +
+  ylab("Peptide Abundance\n(standardised within-peptide)") +
+  xlab("MAPT Peptides (ranked by start position)") +
+  ylim(NA,2.7) +
+  geom_hline(yintercept = 0, col = "black", linetype = 'dashed') +
+  theme(axis.title.x = element_text(size = 14, margin=margin(8,0,0,0)),
+        axis.title.y = element_text(size = 14, margin=margin(0,8,0,0)),
+        axis.text = element_text(size = 12, colour = "black"),
+        legend.text = element_text(size = 12),
+        legend.title = element_text(size = 12),
+        plot.title = element_text(size=16))
+print(p)
+
+ggsave_optional("Peptide-wise all peptides lineplot by rank.png")
+
+q <- ggplot(data=PeptideWiseGenotypeStats, aes(x=PeptideStart, y=mean_val, group = Genotype)) +
+  geom_rect(ymax = Inf, ymin = -Inf, xmin = E10MinPos-5, xmax = E10MaxPos+5, fill = alpha("darkgoldenrod1", 0.005)) +
+  geom_text(
+    label="Exon 10", 
+    x=mean(c(E10MinPos, E10MaxPos)),
+    y=2.6,
+    color = "#002000",
+    aes(fontface=2),
+    size = 5
+  ) +
+  geom_line(aes(color = Genotype), linewidth = 1.5, lineend = "round")+
+  geom_point(aes(color = Genotype)) +
+  geom_errorbar(aes(ymin = mean_val - sd_val, ymax = mean_val + sd_val, color = Genotype), linewidth = 1, width = 3) +
+  ggtitle("Peptides by Actual Start Position") +
+  scale_color_manual(values=plot_colours) +
+  theme_classic() +
+  ylab("Peptide Abundance\n(standardised individually)") +
+  xlab("Peptides (actual start position)") +
+  ylim(NA,2.5) +
+  geom_hline(yintercept = 0, col = "black", linetype = 'dashed')
+print(q)
+
+# ggsave_optional("Peptide-wise all peptides lineplot by position.png")
+
+```
+
+Bar plot E10 only for PeptideScaled data
+```{r}
+PeptideWiseGenotypeStatsE10 <- PeptideWiseGenotypeStats[PeptideWiseGenotypeStats$InExon10,]
+PeptideWiseGenotypeStatsE10 <- PeptideWiseGenotypeStatsE10 %>% mutate(Range = paste(PeptideStart, PeptideEnd, sep = "-"))
+
+p <- ggplot(data = PeptideWiseGenotypeStatsE10, aes(x=Range, y=mean_val, fill = Genotype)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  geom_errorbar(aes(ymin = mean_val - sd_val, ymax = mean_val + sd_val), linewidth = 0.5, width = 0.2, position = position_dodge(width=0.9)) +
+  scale_fill_manual(values=c("cyan4", "indianred", "brown")) + 
+  theme_classic() +
+  ylab("Peptide Abundance\n(standardised individually)") +
+  xlab("MAPT Exon 10 Peptides (2N4R tau amino acid positions)") +
+  geom_hline(yintercept = 0, col = "black", linetype = 'dashed')
+p
+
+ggsave_optional("Peptide-wise E10 only barplot.png")
+```
+
+

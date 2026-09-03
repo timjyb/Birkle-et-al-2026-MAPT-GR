@@ -1,0 +1,182 @@
+---
+title: "Volcanos"
+output: html_document
+date: "2026-05-11"
+---
+
+```{r}
+library(ggplot2)
+library(dplyr)
+```
+
+Save
+```{r}
+save_option <- TRUE
+```
+
+
+Load limma files to plot
+```{r}
+IVS_file <- "./tPx Final Outputs/H1.0 vs IVS10_16 exclusions-TRUE NAThreshold-0.4 genes mapped.csv"
+N279K_file <- "./tPx Final Outputs/H1.0 vs N279K exclusions-TRUE NAThreshold-0.4 genes mapped.csv"
+versus_file <- "./tPx Final Outputs/IVS10_16 vs N279K exclusions-TRUE NAThreshold-0.4 genes mapped.csv"
+
+
+data_IVS <- read.csv(IVS_file)
+IVS_save <- gsub(".*H1.0 vs IVS10_16 ", "", IVS_file)
+IVS_save <- gsub(" genes mapped.csv", "", IVS_save)
+
+
+data_N279K <- read.csv(N279K_file)
+N279K_save <- gsub(".*H1.0 vs N279K ", "", N279K_file)
+N279K_save <- gsub(" genes mapped.csv", "", N279K_save)
+
+
+data_versus <- read.csv(versus_file)
+versus_save <- gsub(".*IVS10_16 vs N279K ", "", versus_file)
+versus_save <- gsub(" genes mapped.csv", "", versus_save)
+```
+
+Plot IVS10+16 volcano
+```{r, fig.width=7,fig.height=7}
+LFC_threshold = 0.5
+
+##IVS10+16
+data_IVS <- data_IVS %>% mutate(Label = ifelse((abs(logFC)>LFC_threshold)&(logFC>0)&(P.Value<0.05), "LargeUp", ifelse((abs(logFC)<=LFC_threshold)&(logFC>0)&(P.Value<0.05), "SmallUp", ifelse((abs(logFC)>LFC_threshold)&(logFC<0)&(P.Value<0.05), "LargeDown", ifelse((abs(logFC)<=LFC_threshold)&(logFC<0)&(P.Value<0.05), "SmallDown", "Non-significant")))))
+
+data_IVS <- data_IVS %>% mutate(hgnc_symbol_if_sig = ifelse((Label == "LargeDown")|(Label == "LargeUp"), Genes, NA))
+data_IVS$hgnc_symbol_if_sig <- replace(data_IVS$hgnc_symbol_if_sig, which(data_IVS$hgnc_symbol_if_sig == "0"), "NA")
+
+#make it possible to label MAPT specifically
+data_IVS[data_IVS$Protein.Group=="P10636", "hgnc_symbol_if_sig"] <- "MAPT"
+data_IVS[data_IVS$Protein.Group=="P10636", "Label"] <- "MAPT"
+
+cols <- c("Non-significant" = "grey", "SmallDown" = "deepskyblue2", "LargeDown" = "deepskyblue4", "SmallUp" = "darkgoldenrod2", "LargeUp" = "darkorange", "MAPT" = "black")
+
+p <- ggplot(data_IVS, aes(x = logFC, y = -log10(P.Value), color = Label)) +
+  geom_point(data = data_IVS[data_IVS$Label == "Non-significant",]) +
+  geom_point(data = data_IVS[data_IVS$Label != "Non-significant",]) +
+  geom_vline(xintercept = c(-LFC_threshold, LFC_threshold), col = "maroon", linetype = 'dashed') +
+  geom_hline(yintercept = -log10(0.05), col = "maroon", linetype = 'dashed') + 
+  #ylim(c(-0.1, 20)) +
+  #xlim(c(-2.5, 2.5))+
+  xlab("Log2 Fold Change (IVS10+16 / H1.0)") +
+  scale_color_manual(values = cols) +
+  guides(color = "none") +
+  ggrepel::geom_text_repel(aes(label = hgnc_symbol_if_sig), na.rm = TRUE, size = 3, max.overlaps = 20 ) +
+  # annotate(geom = "text", label = paste0("LFC Threshold = ", LFC_threshold), x = -Inf, y = 0, hjust = 0, vjust = 0, color = "black") +
+  annotate(geom = "text", label = "Nominal significance", x = -Inf, y = -log10(0.05), hjust = -0.05, vjust = 1.1, color = "maroon") +
+  annotate(geom = "text", label = "LFC < -0.5", x = -LFC_threshold, y = Inf, hjust = 1.05, vjust = 1.1, color = "maroon") +
+  annotate(geom = "text", label = "LFC > 0.5", x = LFC_threshold, y = Inf, hjust = -0.05, vjust = 1.1, color = "maroon") +
+  annotate(geom = "text", label = "Decreased in IVS10+16", x = -Inf, y = -Inf, hjust = -0.05, vjust = -0.5, color = "maroon") +
+  annotate(geom = "text", label = "Increased in IVS10+16", x = Inf, y = -Inf, hjust = 1.05, vjust = -0.5, color = "maroon") + 
+  ggtitle("IVS10+16 Total Proteomics") +
+  theme(axis.title.x = element_text(size = 14, margin=margin(8,0,0,0)),
+        axis.title.y = element_text(size = 14, margin=margin(0,8,0,0)),
+        axis.text = element_text(size = 12, colour = "black"),
+        plot.title = element_text(size=16))
+print(p)
+```
+
+```{r}
+if(save_option){
+  ggsave(paste0("tPx IVS10+16 vs H1 LFCThresh-", LFC_threshold, " ", IVS_save, ".png"), path = "./tPx Volcanos/", width = 7, height = 7)
+}
+```
+
+Plot N279K volcano
+
+```{r, fig.width=7,fig.height=7}
+LFC_threshold = 0.5
+
+##N279K
+data_N279K <- data_N279K %>% mutate(Label = ifelse((abs(logFC)>LFC_threshold)&(logFC>0)&(P.Value<0.05), "LargeUp", ifelse((abs(logFC)<=LFC_threshold)&(logFC>0)&(P.Value<0.05), "SmallUp", ifelse((abs(logFC)>LFC_threshold)&(logFC<0)&(P.Value<0.05), "LargeDown", ifelse((abs(logFC)<=LFC_threshold)&(logFC<0)&(P.Value<0.05), "SmallDown", "Non-significant")))))
+
+data_N279K <- data_N279K %>% mutate(hgnc_symbol_if_sig = ifelse((Label == "LargeDown")|(Label == "LargeUp"), Genes, NA))
+data_N279K$hgnc_symbol_if_sig <- replace(data_N279K$hgnc_symbol_if_sig, which(data_N279K$hgnc_symbol_if_sig == "0"), "NA")
+
+#make it possible to label MAPT specifically
+data_N279K[data_N279K$Protein.Group=="P10636", "hgnc_symbol_if_sig"] <- "MAPT"
+data_N279K[data_N279K$Protein.Group=="P10636", "Label"] <- "MAPT"
+
+cols <- c("Non-significant" = "grey", "SmallDown" = "deepskyblue2", "LargeDown" = "deepskyblue4", "SmallUp" = "darkgoldenrod2", "LargeUp" = "darkorange", "MAPT" = "black")
+
+p <- ggplot(data_N279K, aes(x = logFC, y = -log10(P.Value), color = Label)) +
+  geom_point(data = data_N279K[data_N279K$Label == "Non-significant",]) +
+  geom_point(data = data_N279K[data_N279K$Label != "Non-significant",]) +
+  geom_vline(xintercept = c(-LFC_threshold, LFC_threshold), col = "maroon", linetype = 'dashed') +
+  geom_hline(yintercept = -log10(0.05), col = "maroon", linetype = 'dashed') + 
+  #ylim(c(-0.1, 20)) +
+  #xlim(c(-2.5, 2.5))+
+  xlab("Log2 Fold Change (N279K / H1.0)") +
+  scale_color_manual(values = cols) +
+  guides(color = "none") +
+  ggrepel::geom_text_repel(aes(label = hgnc_symbol_if_sig), na.rm = TRUE, size = 3, max.overlaps = 20 ) +
+  # annotate(geom = "text", label = paste0("LFC Threshold = ", LFC_threshold), x = -Inf, y = 0, hjust = 0, vjust = 0, color = "black") +
+  annotate(geom = "text", label = "Nominal significance", x = -Inf, y = -log10(0.05), hjust = -0.05, vjust = 1.1, color = "maroon") +
+  annotate(geom = "text", label = "LFC < -0.5", x = -LFC_threshold, y = Inf, hjust = 1.05, vjust = 1.1, color = "maroon") +
+  annotate(geom = "text", label = "LFC > 0.5", x = LFC_threshold, y = Inf, hjust = -0.05, vjust = 1.1, color = "maroon") +
+  annotate(geom = "text", label = "Decreased in N279K", x = -Inf, y = -Inf, hjust = -0.05, vjust = -0.5, color = "maroon") +
+  annotate(geom = "text", label = "Increased in N279K", x = Inf, y = -Inf, hjust = 1.05, vjust = -0.5, color = "maroon") + 
+  ggtitle("N279K Total Proteomics") +
+  theme(axis.title.x = element_text(size = 14, margin=margin(8,0,0,0)),
+        axis.title.y = element_text(size = 14, margin=margin(0,8,0,0)),
+        axis.text = element_text(size = 12, colour = "black"),
+        plot.title = element_text(size=16))
+print(p)
+```
+
+```{r}
+if(save_option){
+  ggsave(paste0("tPx N279K vs H1 LFCThresh-", LFC_threshold, " ", N279K_save, ".png"), path = "./tPx Volcanos/", width = 7, height = 7)
+}
+```
+
+
+Plot versus volcano
+
+```{r, fig.width=7,fig.height=7}
+LFC_threshold = 0.5
+
+##versus
+data_versus <- data_versus %>% mutate(Label = ifelse((abs(logFC)>LFC_threshold)&(logFC>0)&(P.Value<0.05), "LargeUp", ifelse((abs(logFC)<=LFC_threshold)&(logFC>0)&(P.Value<0.05), "SmallUp", ifelse((abs(logFC)>LFC_threshold)&(logFC<0)&(P.Value<0.05), "LargeDown", ifelse((abs(logFC)<=LFC_threshold)&(logFC<0)&(P.Value<0.05), "SmallDown", "Non-significant")))))
+
+data_versus <- data_versus %>% mutate(hgnc_symbol_if_sig = ifelse((Label == "LargeDown")|(Label == "LargeUp"), Genes, NA))
+data_versus$hgnc_symbol_if_sig <- replace(data_versus$hgnc_symbol_if_sig, which(data_versus$hgnc_symbol_if_sig == "0"), "NA")
+
+#make it possible to label MAPT specifically
+data_versus[data_versus$Protein.Group=="P10636", "hgnc_symbol_if_sig"] <- "MAPT"
+data_versus[data_versus$Protein.Group=="P10636", "Label"] <- "MAPT"
+
+cols <- c("Non-significant" = "grey", "SmallDown" = "deepskyblue2", "LargeDown" = "deepskyblue4", "SmallUp" = "darkgoldenrod2", "LargeUp" = "darkorange", "MAPT" = "black")
+
+p <- ggplot(data_versus, aes(x = logFC, y = -log10(P.Value), color = Label)) +
+  geom_point(data = data_versus[data_versus$Label == "Non-significant",]) +
+  geom_point(data = data_versus[data_versus$Label != "Non-significant",]) +
+  geom_vline(xintercept = c(-LFC_threshold, LFC_threshold), col = "maroon", linetype = 'dashed') +
+  geom_hline(yintercept = -log10(0.05), col = "maroon", linetype = 'dashed') + 
+  #ylim(c(-0.1, 20)) +
+  #xlim(c(-2.5, 2.5))+
+  xlab("Log2 Fold Change (N279K / IVS10+16)") +
+  scale_color_manual(values = cols) +
+  guides(color = "none") +
+  ggrepel::geom_text_repel(aes(label = hgnc_symbol_if_sig), na.rm = TRUE, size = 3, max.overlaps = 20 ) +
+  # annotate(geom = "text", label = paste0("LFC Threshold = ", LFC_threshold), x = -Inf, y = 0, hjust = 0, vjust = 0, color = "black") +
+  annotate(geom = "text", label = "Nominal significance", x = -Inf, y = -log10(0.05), hjust = -0.05, vjust = 1.1, color = "maroon") +
+  annotate(geom = "text", label = "LFC < -0.5", x = -LFC_threshold, y = Inf, hjust = 1.05, vjust = 1.1, color = "maroon") +
+  annotate(geom = "text", label = "LFC > 0.5", x = LFC_threshold, y = Inf, hjust = -0.05, vjust = 1.1, color = "maroon") +
+  annotate(geom = "text", label = "Higher in IVS10+16", x = -Inf, y = -Inf, hjust = -0.05, vjust = -0.5, color = "maroon") +
+  annotate(geom = "text", label = "Higher in N279K", x = Inf, y = -Inf, hjust = 1.05, vjust = -0.5, color = "maroon") + 
+  ggtitle("N279K versus IVS10+16 Total Proteomics") +
+  theme(axis.title.x = element_text(size = 14, margin=margin(8,0,0,0)),
+        axis.title.y = element_text(size = 14, margin=margin(0,8,0,0)),
+        axis.text = element_text(size = 12, colour = "black"),
+        plot.title = element_text(size=16))
+print(p)
+```
+
+```{r}
+if(save_option){
+  ggsave(paste0("tPx IVS10+16 vs N279K LFCThresh-", LFC_threshold, " ", versus_save, ".png"), path = "./tPx Volcanos/", width = 7, height = 7)
+}
+```

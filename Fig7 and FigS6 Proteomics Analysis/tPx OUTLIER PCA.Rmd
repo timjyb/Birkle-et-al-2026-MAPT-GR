@@ -1,0 +1,104 @@
+---
+title: "tPx PCA Outlier"
+output: html_document
+date: "2026-07-10"
+---
+
+```{r}
+library(FactoMineR)
+library(factoextra)
+library(ggrepel)
+```
+
+
+Load data and reformat
+```{r}
+three_genotype_file <- "./tPx Intermediate Outputs/three_genotype_imputed exclusions-FALSE NAThreshold-0.4 NonImputedKept-FALSE.csv"
+tPx_data <- read.csv(three_genotype_file)
+
+rownames(tPx_data) <- tPx_data$X
+tPx_data <- tPx_data[,-1]
+
+mapper <- read.csv("totalproteome_mapper.csv")
+colnames(mapper)[which(names(mapper) == "Raw")] <- "DRI_ID"
+
+
+save_id <- gsub(".*three_genotype_imputed ", "", three_genotype_file)
+save_id <- gsub(".csv", "", save_id)
+
+save_option = TRUE
+```
+
+Filter out proteins with missing values
+```{r}
+complete_data <- as.data.frame(tPx_data)
+complete_data[complete_data == 1] <- NA #not needed in final analysis as no missing values are kept so have never needed to be assigned values of 1
+complete_data <- complete_data[complete.cases(complete_data),]
+```
+
+```{r}
+complete_data_scaled <- as.data.frame(scale(t(complete_data)))
+#NB transforming as this is what PC will expect
+```
+
+Run PCA
+```{r}
+##Run PCA
+PCA_output <- prcomp(x = complete_data_scaled)
+fviz_eig(PCA_output, ncp = 25)
+ind <- get_pca_ind(PCA_output)
+pca_data <- as.data.frame(ind$coord)
+head(pca_data)[,1:5]
+
+explained_variances <- as.data.frame(summary(PCA_output)$importance)[2,]*100
+```
+
+
+Bring in genotype data
+```{r}
+pca_data$DRI_ID <- rownames(pca_data)
+mapper$DRI_ID <- as.character(mapper$DRI_ID)
+pca_data <- left_join(pca_data, mapper[,colnames(mapper) %in% c("DRI_ID", "Genotype")], by = "DRI_ID")
+```
+
+```{r}
+#Ensure correct IVS10+16 labelling
+pca_data$Genotype <- gsub("IVS10_16", "IVS10+16", pca_data$Genotype)
+
+plot_colours <- c("cyan4", "indianred", "darkred")
+
+point_size <- 3
+highlight_size <- point_size*1.5
+
+pca_data$Size <- point_size
+pca_data[pca_data$DRI_ID=="DRI_X168_2","Size"] <- highlight_size
+
+
+base_pc <- 1
+second_pc <- base_pc + 1
+
+p <- ggplot(pca_data, aes(x=pca_data[,base_pc], y=pca_data[,second_pc], color=Genotype)) +
+  geom_point(aes(size = Size)) +
+  stat_ellipse(data = pca_data, aes(x=pca_data[,base_pc], y=pca_data[,second_pc]), 
+               inherit.aes = FALSE, color = "olivedrab3", fill = "olivedrab3", geom = "polygon", alpha=0.05, linewidth = 1) +
+  xlab(paste0("PC", base_pc, ": ", explained_variances[1,base_pc], "% variance")) + 
+  ylab(paste0("PC", second_pc, ": ", explained_variances[1,second_pc], "% variance")) + 
+  # coord_fixed(ratio = 1) +
+  ggtitle(paste0("PC", base_pc, " and PC", second_pc)) +
+  # geom_text_repel(colour = "black", size = 2) +
+  scale_color_manual(values = plot_colours) +
+  scale_fill_manual(values = plot_colours) +
+  scale_size(range = c(point_size, highlight_size)) +
+  guides(size = "none", color = guide_legend(override.aes = list(size = 3))) +
+  theme(axis.title.x = element_text(size = 18, margin=margin(8,0,0,0)),
+        axis.title.y = element_text(size = 18, margin=margin(0,8,0,0)),
+        axis.text = element_text(size = 15, colour = "black"),
+        legend.text = element_text(size = 12),
+        legend.title = element_text(size = 12), 
+        plot.title = element_text(size=20))
+print(p)
+if (save_option){
+  ggsave(paste0("./tPx Outlier PCA/PC", base_pc, " vs ", second_pc, " ", save_id, ".png"))
+}
+
+```
