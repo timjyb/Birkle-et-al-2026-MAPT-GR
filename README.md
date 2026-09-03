@@ -12,4 +12,4 @@ Fig7 and S6 - MAPT-GR H1.0 vs IVS10+16 vs N279K total proteomics proteome-wide c
 Human tau included in MS searches - but note that the nomenclature used between spectra searches varied by gene name (e.g. MAPT or hTauKI) and Protein.Group (P10636 or P10637). Accounted for in the specific code for each analysis
 
 
-Data and metadata used for each analysis available via repositories linked to the manuscript
+Data and metadata used for each analysis available in each folder and via repositories linked to the manuscript
