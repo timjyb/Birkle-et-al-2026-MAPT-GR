@@ -10,3 +10,6 @@ Fig5 and S5 - MAPT-GR H1.0 vs IVS10+16 vs N279K phospho-proteomics proteome-wide
 Fig7 and S6 - MAPT-GR H1.0 vs IVS10+16 vs N279K total proteomics proteome-wide comparison, ~16M animals, all male
 
 Human tau included in MS searches - but note that the nomenclature used between spectra searches varied by gene name (e.g. MAPT or hTauKI) and Protein.Group (P10636 or P10637). Accounted for in the specific code for each analysis
+
+
+Data and metadata used for each analysis available via repositories linked to the manuscript
