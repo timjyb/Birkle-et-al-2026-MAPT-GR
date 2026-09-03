@@ -1,0 +1,73 @@
+---
+title: "Process limma"
+output: html_document
+date: "2026-05-15"
+---
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(stringr)
+```
+
+Path to file
+```{r}
+path <- "./pPx Final Outputs/IVS10_16 vs N279K exclusions-FALSE NAThreshold-0.4 sex modelled.csv"
+save_path <- paste0(gsub(".csv", "", path)," genes mapped.csv")
+```
+
+Load report.pg_matrix (has ProteinID <-> Gene mappings), take metadata, add pSiteID column
+```{r}
+report <- read.delim("report.phosphosites_90.tsv")
+gene_mapper <- report[,1:6]
+
+gene_mapper <- gene_mapper %>% mutate(pSiteID = paste(Protein, Residue, Site, sep = "_"))
+```
+
+Load limma data
+```{r}
+limma <- read.csv(path)
+
+colnames(limma)[1] <- "pSiteID"
+```
+
+Left join in gene info from the mapper, reorder columns, and sort by P.Value
+```{r}
+limma <- left_join(limma, gene_mapper, by = "pSiteID") %>% 
+  select(c(Protein, Protein.Names, Gene.Names,Residue, Site, Sequence), everything()) %>% 
+  arrange(limma$P.Value)
+```
+
+Add in tau441 annotation (already tau441 coordinates for Martha's data, but still making a new column for compatibility)
+```{r}
+limma$Tau441.pSite <- NA
+limma$Tau441.pSite[limma$Gene.Names == "hMaptKI"] <- paste0(limma$Residue[limma$Gene.Names == "hMaptKI"], limma$Site[limma$Gene.Names == "hMaptKI"])
+limma <- limma %>% relocate(Tau441.pSite, .after = pSiteID)
+
+```
+
+Save updated limma file
+```{r}
+write.csv(limma, save_path)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
