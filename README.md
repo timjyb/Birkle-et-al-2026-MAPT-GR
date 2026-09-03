@@ -1,4 +1,4 @@
-# Birkle-et-al-2026-MAPT-GR-Proteomics
+# Birkle-et-al-2026-MAPT-GR
 Repository for proteomics analysis code associated with Birkle et al. 2026-submitted manuscript
 
 FigS2 - MAPT-GR H1.0 vs RIKEN MAPT KI total proteomics proteome-wide comparison, ~12M animals, mixed sex (not corrected for due to insufficient N)
