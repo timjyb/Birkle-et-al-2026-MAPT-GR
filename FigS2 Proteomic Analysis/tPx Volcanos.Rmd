@@ -1,0 +1,85 @@
+---
+title: "Volcanos"
+output: html_document
+date: "2026-05-11"
+---
+
+```{r}
+library(ggplot2)
+library(dplyr)
+```
+
+Save
+```{r}
+save_option <- FALSE
+```
+
+
+Load limma files to plot
+```{r}
+
+versus_file <- "./tPx Final Outputs/H1.0 vs MAPTKI exclusions-FALSE NAThreshold-0.4 genes mapped.csv"
+
+data_versus <- read.csv(versus_file)
+versus_save <- gsub(".*H1.0 vs MAPTKI ", "", versus_file)
+versus_save <- gsub(" genes mapped.csv", "", versus_save)
+```
+
+Plot versus volcano
+
+```{r, fig.width=10,fig.height=6.5}
+LFC_threshold = 0.5
+
+##Baiap2 label missing - adding
+data_versus$Genes[grep("Q8BKX1", data_versus$Protein.Group)] <- "Baiap2"
+
+##versus
+data_versus <- data_versus %>% mutate(Label = ifelse((abs(logFC)>LFC_threshold)&(logFC>0)&(P.Value<0.05), "LargeUp", ifelse((abs(logFC)<=LFC_threshold)&(logFC>0)&(P.Value<0.05), "SmallUp", ifelse((abs(logFC)>LFC_threshold)&(logFC<0)&(P.Value<0.05), "LargeDown", ifelse((abs(logFC)<=LFC_threshold)&(logFC<0)&(P.Value<0.05), "SmallDown", "Non-significant")))))
+
+data_versus <- data_versus %>% mutate(hgnc_symbol_if_sig = ifelse((Label == "LargeDown")|(Label == "LargeUp"), Genes, NA))
+data_versus$hgnc_symbol_if_sig <- replace(data_versus$hgnc_symbol_if_sig, which(data_versus$hgnc_symbol_if_sig == "0"), "NA")
+
+#Add the special MAPT pSite labels (including specific pSite name) to MAPT rows, including for non-significant pSites
+data_versus <- data_versus %>% mutate(hgnc_symbol_if_sig = case_when(Genes == "hMaptKI" ~ "", hgnc_symbol_if_sig != "hMaptKI" ~ Genes))
+
+data_versus <- data_versus %>% mutate(MAPT_symbols = ifelse(Genes == "hMaptKI", "MAPT", NA))
+
+#make it possible to label MAPT specifically
+data_versus[data_versus$Protein.Group=="P10637", "Label"] <- "MAPT"
+
+cols <- c("Non-significant" = "grey", "SmallDown" = "deepskyblue2", "LargeDown" = "deepskyblue4", "SmallUp" = "darkgoldenrod2", "LargeUp" = "darkorange", "MAPT" = "black")
+
+p <- ggplot(data_versus, aes(x = logFC, y = -log10(P.Value), color = Label)) +
+  geom_point(data = data_versus[data_versus$Label == "Non-significant",]) +
+  geom_point(data = data_versus[!(data_versus$Label %in% c("Non-significant", "MAPT")),]) +
+  geom_point(data = data_versus[data_versus$Label == "MAPT",]) +
+  geom_vline(xintercept = c(-LFC_threshold, LFC_threshold), col = "maroon", linetype = 'dashed') +
+  geom_hline(yintercept = -log10(0.05), col = "maroon", linetype = 'dashed') +
+  geom_hline(yintercept = 4.5, col = "maroon", linetype = 'dashed') + 
+  #ylim(c(-0.1, 20)) +
+  #xlim(c(-2.5, 2.5))+
+  xlab("Log2 Fold Change (MAPTKI WT / MAPT-GR H1.0)") +
+  scale_color_manual(values = cols) +
+  guides(color = "none") +
+  ggrepel::geom_text_repel(aes(label = hgnc_symbol_if_sig), na.rm = TRUE, size = 3, max.overlaps = 10 ) +
+  ggrepel::geom_label_repel(aes(label = MAPT_symbols), na.rm = TRUE, size = 3, max.overlaps = 20) +
+  annotate(geom = "text", label = "Proteome-wide significance", x = Inf, y = 4.5, hjust = 1.02, vjust = 1.1, color = "maroon") +
+  annotate(geom = "text", label = "Nominal significance", x = Inf, y = -log10(0.05), hjust = 1.02, vjust = 1.1, color = "maroon") +
+  annotate(geom = "text", label = "LFC < -0.5", x = -LFC_threshold, y = Inf, hjust = 1.05, vjust = 1.1, color = "maroon") +
+  annotate(geom = "text", label = "LFC > 0.5", x = LFC_threshold, y = Inf, hjust = -0.05, vjust = 1.1, color = "maroon") +
+  annotate(geom = "text", label = "Higher in MAPT-GR", x = -Inf, y = -Inf, hjust = -0.05, vjust = -0.5, color = "maroon") +
+  annotate(geom = "text", label = "Higher in MAPT-KI", x = Inf, y = -Inf, hjust = 1.05, vjust = -0.5, color = "maroon") +
+
+  ggtitle("MAPTKI WT vs MAPT-GR H1.0 Total Proteomics") +
+  theme(axis.title.x = element_text(size = 14, margin=margin(8,0,0,0)),
+        axis.title.y = element_text(size = 14, margin=margin(0,8,0,0)),
+        axis.text = element_text(size = 12, colour = "black"),
+        plot.title = element_text(size=16))
+print(p)
+```
+
+```{r}
+if(save_option){
+  ggsave(paste0("tPx H1.0 vs MAPTKI LFCThresh-", LFC_threshold, " ", versus_save, ".png"), path = "./tPx Volcanos/", height = 7, width = 8)
+}
+```
