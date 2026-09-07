@@ -185,23 +185,31 @@ detected_per_sample_summary <- detected_per_sample %>% group_by(Genotype) %>%
   )
 
 #name amendments
-detected_per_sample_summary$Genotype <- gsub("H1.0", "MAPT-GR H1.0", detected_per_sample_summary$Genotype)
-detected_per_sample_summary$Genotype <- gsub("MAPTKI", "MAPTKI WT", detected_per_sample_summary$Genotype)
-detected_per_sample$Genotype <- gsub("H1.0", "MAPT-GR H1.0", detected_per_sample$Genotype)
-detected_per_sample$Genotype <- gsub("MAPTKI", "MAPTKI WT", detected_per_sample$Genotype)
+detected_per_sample_summary$Genotype <- gsub("H1.0", "-GR H1.0", detected_per_sample_summary$Genotype)
+detected_per_sample_summary$Genotype <- gsub("MAPTKI", " KI WT", detected_per_sample_summary$Genotype)
+detected_per_sample$Genotype <- gsub("H1.0", "-GR H1.0", detected_per_sample$Genotype)
+detected_per_sample$Genotype <- gsub("MAPTKI"," KI WT", detected_per_sample$Genotype)
 
+library(ggtext)
+library(glue)
+detected_per_sample_summary <- detected_per_sample_summary %>% mutate(
+  Genotype.formatted = glue("<i>MAPT</i>{Genotype}")
+)
+detected_per_sample <- detected_per_sample %>% mutate(
+  Genotype.formatted = glue("<i>MAPT</i>{Genotype}")
+)
 
 p <- ggplot() +
-  geom_bar(aes(x=Genotype, y=mean_val, fill = Genotype), detected_per_sample_summary, stat = 'identity', width = 0.8) +
-  geom_errorbar(aes(x=Genotype, ymin=mean_val-sd_val, ymax=mean_val+sd_val), detected_per_sample_summary, width = 0.2) +
-  geom_jitter(aes(x=Genotype, y=Number.Detected.Proteins), detected_per_sample, size = 2, width = 0.3) +
+  geom_bar(aes(x=Genotype.formatted, y=mean_val, fill = Genotype.formatted), detected_per_sample_summary, stat = 'identity', width = 0.8) +
+  geom_errorbar(aes(x=Genotype.formatted, ymin=mean_val-sd_val, ymax=mean_val+sd_val), detected_per_sample_summary, width = 0.2) +
+  geom_jitter(aes(x=Genotype.formatted, y=Number.Detected.Proteins), detected_per_sample, size = 2, width = 0.3) +
   labs(y = "Protein Detections") +
   scale_fill_manual(values = plot_colours) +
   guides(fill = "none") +
   theme(axis.title.x = element_blank(),
         axis.title.y = element_text(size = 18, margin=margin(0,10,0,0)),
         axis.text = element_text(size = 15, colour = "black"),
-        axis.text.x = element_text(angle = 45, hjust = 1))
+        axis.text.x = element_markdown(angle = 45, hjust = 1))
 p
 
 ggsave("./tPx QC Plots/Total Detected Proteins by genotype.png", create.dir = TRUE, width = 3, height = 4.5)

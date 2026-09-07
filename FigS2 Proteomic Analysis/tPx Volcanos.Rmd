@@ -49,6 +49,9 @@ data_versus[data_versus$Protein.Group=="P10637", "Label"] <- "MAPT"
 
 cols <- c("Non-significant" = "grey", "SmallDown" = "deepskyblue2", "LargeDown" = "deepskyblue4", "SmallUp" = "darkgoldenrod2", "LargeUp" = "darkorange", "MAPT" = "black")
 
+##Final labelling amendments
+library(ggtext)
+
 p <- ggplot(data_versus, aes(x = logFC, y = -log10(P.Value), color = Label)) +
   geom_point(data = data_versus[data_versus$Label == "Non-significant",]) +
   geom_point(data = data_versus[!(data_versus$Label %in% c("Non-significant", "MAPT")),]) +
@@ -58,7 +61,7 @@ p <- ggplot(data_versus, aes(x = logFC, y = -log10(P.Value), color = Label)) +
   geom_hline(yintercept = 4.5, col = "maroon", linetype = 'dashed') + 
   #ylim(c(-0.1, 20)) +
   #xlim(c(-2.5, 2.5))+
-  xlab("Log2 Fold Change (MAPTKI WT / MAPT-GR H1.0)") +
+  xlab("Log2 Fold Change (<i>MAPT</i> KI WT / <i>MAPT</i>-GR H1.0)") +
   scale_color_manual(values = cols) +
   guides(color = "none") +
   ggrepel::geom_text_repel(aes(label = hgnc_symbol_if_sig), na.rm = TRUE, size = 3, max.overlaps = 10 ) +
@@ -68,13 +71,13 @@ p <- ggplot(data_versus, aes(x = logFC, y = -log10(P.Value), color = Label)) +
   annotate(geom = "text", label = "LFC < -0.5", x = -LFC_threshold, y = Inf, hjust = 1.05, vjust = 1.1, color = "maroon") +
   annotate(geom = "text", label = "LFC > 0.5", x = LFC_threshold, y = Inf, hjust = -0.05, vjust = 1.1, color = "maroon") +
   annotate(geom = "text", label = "Higher in MAPT-GR", x = -Inf, y = -Inf, hjust = -0.05, vjust = -0.5, color = "maroon") +
-  annotate(geom = "text", label = "Higher in MAPT-KI", x = Inf, y = -Inf, hjust = 1.05, vjust = -0.5, color = "maroon") +
+  annotate(geom = "text", label = "Higher in MAPT KI", x = Inf, y = -Inf, hjust = 1.05, vjust = -0.5, color = "maroon") +
 
-  ggtitle("MAPTKI WT vs MAPT-GR H1.0 Total Proteomics") +
-  theme(axis.title.x = element_text(size = 14, margin=margin(8,0,0,0)),
+  ggtitle("<i>MAPT</i> KI WT vs <i>MAPT</i>-GR H1.0 Total Proteomics") +
+  theme(axis.title.x = element_markdown(size = 14, margin=margin(8,0,0,0)),
         axis.title.y = element_text(size = 14, margin=margin(0,8,0,0)),
         axis.text = element_text(size = 12, colour = "black"),
-        plot.title = element_text(size=16))
+        plot.title = element_markdown(size=16))
 print(p)
 ```
 
