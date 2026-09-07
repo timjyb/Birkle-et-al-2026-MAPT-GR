@@ -4,7 +4,7 @@ Analysis scripts for long-read whole-genome sequencing of MAPT Genomic Replaceme
 
 > Birkle TJY, Foiani M, Yaman Ü, Damoc LS, Nirujogi RS, Tsefou E, Geary B, Avdic-Belltheus A, Watamura N, Faber K, Santambrogio A, Patel S, Davies H, Vendruscolo M, Duff KE. Divergent tau phosphorylation across MAPT mutations despite similar 4R tau shifts in MAPT-GR mice. (2026)
 
-These scripts produced the sequencing depth statistics and GR locus coverage data reported in **Table 1**, and the B6J/B6N background and H1/H2 subhaplotype genotype calls in **Table S1**.
+These scripts produced the sequencing depth statistics and GR locus coverage data reported in the text, MAPT locus mutation confirmations and subhaplotype determinations reported in **Table 1** and **Table S1**, and the B6J/B6N background assessment of **Table 2** and **Table S2**.
 
 ## Lines sequenced
 
